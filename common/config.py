@@ -10,6 +10,7 @@ SPARSE = "bm25"
 DIM = 384
 
 QDRANT_URL = "http://localhost:6333"
+SYNC_API_URL = "http://localhost:8000"
 FLEET_COLLECTION = "fleet_knowledge"
 
 DEVICES = {

@@ -9,7 +9,9 @@ from qdrant_edge import (
     Modifier, Point, Query, QueryRequest, UpdateOperation,
 )
 
-from common.config import DENSE, DEVICES, DIM, FLEET_COLLECTION, QDRANT_URL, SPARSE, STORAGE_DIR
+from common.config import (
+    DENSE, DEVICES, DIM, FLEET_COLLECTION, QDRANT_URL, SPARSE, STORAGE_DIR, SYNC_API_URL,
+)
 from common.embeddings import Embedder, index_text, point_id
 from device.outbox import Outbox
 from device.policy import decide
@@ -122,6 +124,43 @@ class DeviceNode:
         self.outbox.add(record, decision, base_version)
         return record, decision
 
+        # ---------- pushing notes (device -> cloud) ----------
+
+    def sync_now(self, budget_bytes=None):
+        self._require_online()
+        summary = {"sent": [], "conflicts": [], "deferred": [], "bytes": 0}
+
+        for item in self.outbox.items(status="pending"):
+            size = item["size_bytes"]
+            if budget_bytes is not None and summary["bytes"] + size > budget_bytes:
+                summary["deferred"].append(item["note_id"])
+                self.outbox.log("deferred", f"{item['note_id']} ({size} B) exceeds remaining budget")
+                continue
+
+            try:
+                resp = requests.post(
+                    f"{SYNC_API_URL}/push",
+                    json={"device": self.device_id, "note": item["payload"],
+                          "base_version": item["base_version"]},
+                    timeout=30,
+                )
+                resp.raise_for_status()
+            except requests.RequestException as e:
+                self.outbox.log("push_failed", f"{item['note_id']}: {e}; will retry next sync")
+                break
+
+            result = resp.json()
+            summary["bytes"] += size
+            if result["status"] in ("accepted", "applied_edit", "duplicate"):
+                self.outbox.set_status(item["note_id"], "synced")
+                summary["sent"].append(item["note_id"])
+            else:
+                self.outbox.set_status(item["note_id"], result["status"])
+                summary["conflicts"].append(item["note_id"])
+            self.outbox.log("push", f"{item['note_id']} -> {result['status']}")
+
+        return summary
+
     # ---------- hybrid search across both shards ----------
 
     def _query(self, shard, vector, using, limit=10):
@@ -148,9 +187,12 @@ class DeviceNode:
         results = {}
         for method, hits in ranked_lists:
             for rank, (source, h) in enumerate(hits, start=1):
-                entry = results.setdefault(f"{source}:{h.id}", {
+                key = str(h.id)
+                entry = results.setdefault(key, {
                     "source": source, "payload": h.payload, "rrf": 0.0, "dense_score": None,
                 })
+                if entry["source"] != source:
+                    entry["source"] = "fleet+local"
                 entry["rrf"] += 1 / (k + rank)
                 if method == "dense":
                     entry["dense_score"] = h.score

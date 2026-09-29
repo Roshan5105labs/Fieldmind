@@ -4,7 +4,7 @@ from qdrant_client import QdrantClient, models
 
 from common.config import CORPUS_DIR, DENSE, DIM, FLEET_COLLECTION, QDRANT_URL, SPARSE
 from common.embeddings import Embedder, index_text, point_id
-
+from cloud.state import CloudState
 
 def to_server_sparse(sv):
     return models.SparseVector(indices=list(sv.indices), values=list(sv.values))
@@ -39,6 +39,7 @@ def seed(reset=True):
         for r, t, d in zip(records, texts, dense_vecs)
     ]
     client.upsert(collection_name=FLEET_COLLECTION, points=points, wait=True)
+    CloudState().reset(records)
     print(f"Seeded {client.count(FLEET_COLLECTION).count} records into '{FLEET_COLLECTION}'")
 
 
