@@ -1,6 +1,7 @@
 services:
   qdrant:
-    image: qdrant/qdrant:v1.19.1
+    image: qdrant/qdrant:v1.19.0   # keep whatever version you pinned
+    restart: unless-stopped
     ports:
       - "6333:6333"
     volumes:
