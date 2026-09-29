@@ -1,0 +1,2 @@
+qdrant-edge-py
+fastembed
