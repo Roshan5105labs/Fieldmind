@@ -1,0 +1,1 @@
+{"on_disk_payload":true,"vectors":{"dense":{"size":384,"distance":"Cosine","on_disk":false}},"sparse_vectors":{"bm25":{"on_disk":false,"modifier":"idf"}}}
