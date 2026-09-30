@@ -160,6 +160,9 @@ class DeviceNode:
             self.outbox.log("push", f"{item['note_id']} -> {result['status']}")
 
         return summary
+    def approve(self, note_id):
+        self.outbox.set_status(note_id, "pending")
+        self.outbox.log("approved", f"{note_id} approved by supervisor; queued for sync")
 
     # ---------- hybrid search across both shards ----------
 

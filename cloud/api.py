@@ -75,5 +75,35 @@ def push(req: PushRequest):
 
 @app.get("/conflicts")
 def list_conflicts():
-    return state.conflicts()
+    items = state.conflicts()
+    for c in items:
+        records = client.retrieve(FLEET_COLLECTION, ids=[point_id(c["doc_id"])], with_payload=True)
+        c["current_text"] = records[0].payload["text"] if records else ""
+    return items
+
+
+class ResolveRequest(BaseModel):
+    action: str  # "keep_server" or "accept_proposed"
+
+
+@app.post("/conflicts/{conflict_id}/resolve")
+def resolve_conflict(conflict_id: int, req: ResolveRequest):
+    with state.lock:
+        c = state.get_conflict(conflict_id)
+        if c is None or c["status"] != "open":
+            return {"status": "not_found"}
+
+        if req.action == "accept_proposed":
+            existing = client.retrieve(FLEET_COLLECTION, ids=[point_id(c["doc_id"])], with_payload=True)[0].payload
+            new_version = state.version(c["doc_id"]) + 1
+            _upsert(point_id(c["doc_id"]), {
+                **existing, "text": c["proposed_text"], "version": new_version,
+                "updated_by": f"{c['device']} (approved by supervisor)", "source_note": c["note_id"],
+            })
+            state.set_version(c["doc_id"], new_version, "supervisor")
+            state.set_conflict_status(conflict_id, "accepted")
+            return {"status": "accepted", "version": new_version}
+
+        state.set_conflict_status(conflict_id, "rejected")
+        return {"status": "rejected"}
 

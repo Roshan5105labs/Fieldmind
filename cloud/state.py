@@ -82,3 +82,10 @@ class CloudState:
     def conflicts(self, status="open"):
         rows = self.conn.execute("SELECT * FROM conflicts WHERE status = ? ORDER BY id", (status,)).fetchall()
         return [dict(r) for r in rows]
+    def get_conflict(self, conflict_id):
+        row = self.conn.execute("SELECT * FROM conflicts WHERE id = ?", (conflict_id,)).fetchone()
+        return dict(row) if row else None
+
+    def set_conflict_status(self, conflict_id, status):
+        with self.conn:
+            self.conn.execute("UPDATE conflicts SET status = ? WHERE id = ?", (status, conflict_id))
