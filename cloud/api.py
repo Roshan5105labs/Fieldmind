@@ -65,8 +65,9 @@ def health():
 def push(req: PushRequest):
     note_id = req.note["note_id"]
     with state.lock:
-        if state.was_received(note_id):
-            return {"status": "duplicate"}
+        previous_outcome = state.received_outcome(note_id)
+        if previous_outcome is not None:
+            return {"status": previous_outcome, "replayed": True}
         doc_id = req.note.get("edits_doc_id")
         result = _apply_edit(req, doc_id) if doc_id else _add_knowledge(req)
         state.mark_received(note_id, req.device, result["status"])

@@ -1,4 +1,5 @@
 import json
+import os
 
 from qdrant_client import QdrantClient, models
 
@@ -20,10 +21,15 @@ def create_collection(client):
 
 def seed(reset=True):
     client = QdrantClient(url=QDRANT_URL)
-    if reset and client.collection_exists(FLEET_COLLECTION):
+    exists = client.collection_exists(FLEET_COLLECTION)
+    if reset and exists:
         client.delete_collection(FLEET_COLLECTION)
-    if not client.collection_exists(FLEET_COLLECTION):
+        exists = False
+    if not exists:
         create_collection(client)
+    elif not reset:
+        print(f"Preserving existing '{FLEET_COLLECTION}' collection")
+        return
 
     records = json.loads((CORPUS_DIR / "fleet.json").read_text(encoding="utf-8"))
     embedder = Embedder()
@@ -44,4 +50,7 @@ def seed(reset=True):
 
 
 if __name__ == "__main__":
-    seed()
+    reset_on_start = os.getenv("FIELDMIND_RESET_ON_START", "false").lower() in {
+        "1", "true", "yes", "on",
+    }
+    seed(reset=reset_on_start)

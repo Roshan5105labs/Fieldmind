@@ -65,7 +65,13 @@ class CloudState:
             )
 
     def was_received(self, note_id):
-        return self.conn.execute("SELECT 1 FROM received WHERE note_id = ?", (note_id,)).fetchone() is not None
+        return self.received_outcome(note_id) is not None
+
+    def received_outcome(self, note_id):
+        row = self.conn.execute(
+            "SELECT outcome FROM received WHERE note_id = ?", (note_id,)
+        ).fetchone()
+        return row["outcome"] if row else None
 
     def mark_received(self, note_id, device, outcome):
         with self.conn:

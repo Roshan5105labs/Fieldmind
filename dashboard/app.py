@@ -127,8 +127,12 @@ def outbox_tab(node, device_id, items, budget):
     if b1.button("Sync now", key=f"sync_{device_id}", type="primary", disabled=not node.online):
         try:
             s = node.sync_now(budget_bytes=budget)
-            flash(device_id, f"Sent {s['sent']} · deferred {s['deferred']} · conflicts {s['conflicts']} "
-                             f"· {s['bytes']} B of {budget} B budget")
+            message = (f"Sent {s['sent']} · deferred {s['deferred']} · "
+                       f"conflicts {s['conflicts']} · {s['bytes']} B of {budget} B budget")
+            if s["status"] == "failed":
+                flash(device_id, f"Sync failed for {s['failed']}: {s['error']}. {message}", "error")
+            else:
+                flash(device_id, message)
         except (OfflineError, requests.RequestException) as e:
             flash(device_id, f"Sync failed: {e}", "error")
         st.rerun()
@@ -173,11 +177,19 @@ def device_panel(device_id, budget):
     m3.metric("Kept local", count("kept_local"))
     m4.metric("Review / conflict", count("needs_review") + count("conflict"))
 
-    t_search, t_log, t_outbox, t_activity = st.tabs(["Search", "Log note", "Outbox & sync", "Activity"])
+    t_search, t_log, t_memory, t_outbox, t_activity = st.tabs(
+        ["Search", "Log note", "Memory", "Outbox & sync", "Activity"]
+    )
     with t_search:
         search_tab(node, device_id)
     with t_log:
         log_tab(node, device_id, items)
+    with t_memory:
+        memory = node.memory_records(limit=100)
+        if memory:
+            st.dataframe(memory, use_container_width=True, hide_index=True)
+        else:
+            st.caption("No records stored on this device.")
     with t_outbox:
         outbox_tab(node, device_id, items, budget)
     with t_activity:

@@ -27,6 +27,8 @@ class Embedder:
 
 def index_text(record):
     parts = [
+        record.get("doc_id"),
+        record.get("note_id"),
         record.get("fault_code"),
         record.get("asset_id"),
         record.get("equipment_type"),

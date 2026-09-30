@@ -6,7 +6,7 @@ from pathlib import Path
 import requests
 from qdrant_edge import (
     Distance, EdgeConfig, EdgeShard, EdgeSparseVectorParams, EdgeVectorParams,
-    Modifier, Point, Query, QueryRequest, UpdateOperation,
+    Modifier, Point, Query, QueryRequest, ScrollRequest, UpdateOperation,
 )
 
 from common.config import (
@@ -128,7 +128,10 @@ class DeviceNode:
 
     def sync_now(self, budget_bytes=None):
         self._require_online()
-        summary = {"sent": [], "conflicts": [], "deferred": [], "bytes": 0}
+        summary = {
+            "sent": [], "conflicts": [], "deferred": [], "bytes": 0,
+            "status": "ok", "failed": [], "error": None,
+        }
 
         for item in self.outbox.items(status="pending"):
             size = item["size_bytes"]
@@ -146,6 +149,9 @@ class DeviceNode:
                 )
                 resp.raise_for_status()
             except requests.RequestException as e:
+                summary["status"] = "failed"
+                summary["failed"].append(item["note_id"])
+                summary["error"] = str(e)
                 self.outbox.log("push_failed", f"{item['note_id']}: {e}; will retry next sync")
                 break
 
@@ -198,9 +204,28 @@ class DeviceNode:
                     entry["source"] = "fleet+local"
                 entry["rrf"] += 1 / (k + rank)
                 if method == "dense":
-                    entry["dense_score"] = h.score
+                    if entry["dense_score"] is None or h.score > entry["dense_score"]:
+                        entry["dense_score"] = h.score
 
         return sorted(results.values(), key=lambda e: e["rrf"], reverse=True)[:limit]
+
+    def memory_records(self, limit=100):
+        records = []
+        for source, shard in (("fleet", self.fleet), ("local", self.local)):
+            if shard is None:
+                continue
+            points, _ = shard.scroll(ScrollRequest(
+                limit=limit, with_payload=True, with_vector=False,
+            ))
+            for point in points:
+                payload = point.payload or {}
+                records.append({
+                    "id": payload.get("doc_id") or payload.get("note_id") or str(point.id),
+                    "title/type": payload.get("title") or payload.get("type") or payload.get("kind"),
+                    "source": source,
+                    "version": payload.get("version"),
+                })
+        return records[:limit]
 
     # ---------- shutdown ----------
 
